@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
+// 
 // Standard tuning of a guitar
 const standardTuning = ['E', 'A', 'D', 'G', 'B', 'E'].reverse();
 
