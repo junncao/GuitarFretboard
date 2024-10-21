@@ -1,32 +1,98 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const chords = {
-  Major: ['C', 'E', 'G'],
-  minor: ['C', 'Eb', 'G'],
-  sus4: ['C', 'F', 'G'],
-  dim: ['C', 'Eb', 'Gb'],
-  aug: ['C', 'E', 'G#'],
-  '7th': ['C', 'E', 'G', 'Bb'],
-  maj7: ['C', 'E', 'G', 'B'],
-  add9: ['C', 'E', 'G', 'D'],
+// Standard tuning of a guitar
+const standardTuning = ['E', 'A', 'D', 'G', 'B', 'E'].reverse();
+
+// All notes in music
+const allNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B'];
+
+// Chord intervals (semitones from root)
+const chordMap = {
+  Major: [0, 4, 7],
+  Minor: [0, 3, 7],
+  'Major 7': [0, 4, 7, 11],
+  'Minor 7': [0, 3, 7, 10],
+  'Dominant 7': [0, 4, 7, 10],
+  Dim7: [0, 3, 6, 9],
+  Minor7b5: [0, 3, 6, 10]
 };
 
-const guitarStrings = ['E', 'A', 'D', 'G', 'B', 'E'];
-const frets = Array.from({ length: 13 }, (_, i) => i); // 0 to 12
-const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-function getNote(string, fret) {
-  const stringIndex = notes.indexOf(string);
-  return notes[(stringIndex + fret) % 12];
+// Function to get the notes of a chord
+function getChordNotes(root, chordType) {
+  const rootIndex = allNotes.indexOf(root);
+  return chordMap[chordType].map(interval => allNotes[(rootIndex + interval) % 12]);
 }
 
-function Fretboard({ selectedChord }) {
+// Function to get the note at a specific string and fret
+function getNoteOnString(string, fret) {
+  const stringIndex = allNotes.indexOf(string);
+  return allNotes[(stringIndex + fret) % 12];
+}
+
+const frets = Array.from({ length: 13 }, (_, i) => i); // 0 to 12
+
+// Note class to uniquely identify each note position
+class Note {
+  constructor(string, fret) {
+    this.string = string;
+    this.fret = fret;
+  }
+
+  toString() {
+    return `${this.string}-${this.fret}`;
+  }
+}
+
+function Fretboard({ selectedChord, rootNote, onCorrectSelection }) {
   const [visibleNotes, setVisibleNotes] = useState({});
+  const [selectedNotes, setSelectedNotes] = useState([]);
+
+  // 新增：重置函数
+  const resetFretboard = () => {
+    setVisibleNotes({});
+    setSelectedNotes([]);
+  };
+
+  // 修改：useEffect 以响应 selectedChord 或 rootNote 的变化
+  useEffect(() => {
+    checkIfCorrect(selectedNotes);
+  }, [selectedNotes, selectedChord, rootNote]);
+
+  // 新增：useEffect 以在 chord 变化时重置 fretboard
+  useEffect(() => {
+    resetFretboard();
+  }, [selectedChord, rootNote]);
+
 
   const toggleNoteVisibility = (string, fret) => {
-    const noteKey = `${string}-${fret}`;
-    setVisibleNotes(prev => ({ ...prev, [noteKey]: !prev[noteKey] }));
+    const note = new Note(string, fret).toString();
+    const noteName = getNoteOnString(standardTuning[string], fret);
+    setVisibleNotes(prev => ({ ...prev, [note]: !prev[note] }));
+    setSelectedNotes(prev => {
+      const noteIndex = prev.findIndex(n => n.position === note);
+      if (noteIndex > -1) {
+        // 如果这个位置的音符已经被选中，移除它
+        return prev.filter((_, i) => i !== noteIndex);
+      } else {
+        // 否则，添加这个音符和它的位置
+        return [...prev, { name: noteName, position: note }];
+      }
+    });
   };
+
+  const chordNotes = getChordNotes(rootNote, selectedChord);
+
+  const checkIfCorrect = (selectedNotes) => {
+    const uniqueSelectedNoteNames = new Set(selectedNotes.map(n => n.name));
+    if (chordNotes.every(note => uniqueSelectedNoteNames.has(note))) {
+      onCorrectSelection();
+    }
+  };
+
+  useEffect(() => {
+    checkIfCorrect(selectedNotes);
+  }, [selectedNotes, chordNotes, onCorrectSelection]);
+
 
   return (
     <div className="mt-6 overflow-x-auto">
@@ -35,42 +101,34 @@ function Fretboard({ selectedChord }) {
         {/* Fret bars */}
         <div className="absolute top-0 left-0 right-0 bottom-0 flex">
           {frets.map((fret) => (
-            <div key={fret} className="flex-1 border-r border-gray-400" />
+            <div key={fret} className={`flex-1 border-r border-gray-400 ${fret === 0 ? 'border-r-4 border-gray-400' : ''}`} />
           ))}
         </div>
-        
-        {/* Fret markers */}
-        <div className="absolute top-full left-0 right-0 flex text-xs text-gray-500 mt-1">
-          {frets.map((fret) => (
-            <div key={fret} className="flex-1 text-center">{fret}</div>
-          ))}
-        </div>
-        
+
         {/* Strings and notes */}
         <div className="relative">
-          {guitarStrings.map((string, stringIndex) => (
+          {standardTuning.map((string, stringIndex) => (
             <div key={string} className="flex items-center h-10 relative">
               {/* String */}
               <div className="absolute left-0 right-0 h-px bg-gray-400" />
               
               {frets.map((fret) => {
-                const note = getNote(string, fret);
-                const isChordNote = chords[selectedChord].includes(note);
-                const noteKey = `${string}-${fret}`;
+                const note = getNoteOnString(string, fret);
+                const noteKey = new Note(stringIndex, fret).toString();
                 const isVisible = visibleNotes[noteKey];
 
                 return (
                   <div 
                     key={fret} 
                     className="flex-1 flex justify-center items-center"
-                    onClick={() => toggleNoteVisibility(string, fret)}
+                    onClick={() => toggleNoteVisibility(stringIndex, fret)}
                   >
                     <div 
                       className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer
-                        ${isChordNote ? 'bg-blue-500' : 'border border-gray-300'}
-                        ${isVisible ? 'opacity-100' : 'opacity-30'}`}
+                        ${isVisible ? 'bg-blue-500' : 'border border-gray-300'}
+                        ${isVisible ? 'opacity-100' : 'opacity-0'}`}
                     >
-                      <span className={`text-xs ${isChordNote ? 'text-white font-bold' : 'text-gray-500'}`}>
+                      <span className={`text-xs ${isVisible ? 'text-white font-bold' : 'text-gray-500'}`}>
                         {note}
                       </span>
                     </div>
@@ -102,25 +160,79 @@ function Fretboard({ selectedChord }) {
 
 function App() {
   const [selectedChord, setSelectedChord] = useState('Major');
+  const [rootNote, setRootNote] = useState('C');
+  const [isCorrect, setIsCorrect] = useState(false);
+
+  // 新增：随机选择函数
+  const randomizeChord = () => {
+    const randomRoot = allNotes[Math.floor(Math.random() * allNotes.length)];
+    const chordTypes = Object.keys(chordMap);
+    const randomChord = chordTypes[Math.floor(Math.random() * chordTypes.length)];
+    setRootNote(randomRoot);
+    setSelectedChord(randomChord);
+  };
+
+  // 修改：handleCorrectSelection 函数
+  const handleCorrectSelection = () => {
+    setIsCorrect(true);
+  };
+
+  // 修改：handleNext 函数
+  const handleNext = () => {
+    setIsCorrect(false);
+    randomizeChord();
+  };
+
+  // 新增：useEffect 用于初始随机选择
+  useEffect(() => {
+    randomizeChord();
+  }, []);
+
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold mb-4">Chord Selector</h1>
       <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-4xl">
-        <select 
-          value={selectedChord} 
-          onChange={(e) => setSelectedChord(e.target.value)}
-          className="mb-4 p-2 border rounded w-full"
-        >
-          {Object.keys(chords).map((chord) => (
-            <option key={chord} value={chord}>{chord}</option>
-          ))}
-        </select>
+        <div className="mb-4">
+          <label className="block mb-2 font-bold">Root Note:</label>
+          <select 
+            value={rootNote} 
+            onChange={(e) => setRootNote(e.target.value)}
+            className="p-2 border rounded w-full"
+          >
+            {allNotes.map((note) => (
+              <option key={note} value={note}>{note}</option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-4">
+          <label className="block mb-2 font-bold">Chord Type:</label>
+          <select 
+            value={selectedChord} 
+            onChange={(e) => setSelectedChord(e.target.value)}
+            className="p-2 border rounded w-full"
+          >
+            {Object.keys(chordMap).map((chord) => (
+              <option key={chord} value={chord}>{chord}</option>
+            ))}
+          </select>
+        </div>
         <div className="mt-4">
           <h2 className="text-xl font-semibold mb-2">Chord Notes:</h2>
-          <p className="text-lg">{chords[selectedChord].join(', ')}</p>
+          <p className="text-lg">{getChordNotes(rootNote, selectedChord).join(', ')}</p>
         </div>
-        <Fretboard selectedChord={selectedChord} />
+        <Fretboard selectedChord={selectedChord} rootNote={rootNote} onCorrectSelection={handleCorrectSelection} />
+        {isCorrect && (
+          <div className="mt-4">
+            <p className="text-green-500 text-lg font-bold">选择正确</p>
+            <button 
+              onClick={handleNext} 
+              className="mt-2 px-4 py-2 bg-blue-500 text-white rounded"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
